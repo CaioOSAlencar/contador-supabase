@@ -1,34 +1,88 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { useEffect, useState } from 'react'
+import { createClient } from '@supabase/supabase-js'
+
+const supabaseUrl = '' 
+const supabaseAnonKey = '' 
+
+const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [clicks, setClicks] = useState(0)
+  const [loading, setLoading] = useState(false)
+
+  // Carrega o valor inicial e escuta mudanças em tempo real
+  useEffect(() => {
+    // Pega o valor atual
+    supabase
+      .from('global_clicks')
+      .select('total')
+      .eq('id', 1)
+      .single()
+      .then(({ data }: { data: any }) => setClicks(data?.total || 0))
+
+    // Realtime: toda vez que alguém clicar, atualiza para TODOS
+    const channel = supabase
+      .channel('global_clicks_channel')
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'global_clicks'
+      }, (payload: any) => {
+        setClicks(payload.new.total)
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [])
+
+  const handleClick = async () => {
+    if (loading) return
+    setLoading(true)
+
+    // Pega o valor atual e soma +1
+    const { data } = await supabase
+      .from('global_clicks')
+      .select('total')
+      .eq('id', 1)
+      .single()
+
+    if (data) {
+      await supabase
+        .from('global_clicks')
+        .update({ total: data.total + 1 })
+        .eq('id', 1)
+    }
+
+    setLoading(false)
+  }
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
+    <div style={{ textAlign: 'center', marginTop: '15vh', fontFamily: 'Arial, sans-serif' }}>
+      <h1>Contador Global de Cliques</h1>
+      <h2 style={{ fontSize: '4rem', margin: '2rem' }}>
+        {clicks.toLocaleString('pt-BR')}
+      </h2>
+      <button
+        onClick={handleClick}
+        disabled={loading}
+        style={{
+          fontSize: '2rem',
+          padding: '1rem 3rem',
+          background: loading ? '#ccc' : '#0066ff',
+          color: 'white',
+          border: 'none',
+          borderRadius: '10px',
+          cursor: loading ? 'not-allowed' : 'pointer'
+        }}
+      >
+        {loading ? 'Registrando...' : 'CLIQUE AQUI!'}
+      </button>
+      <p style={{ marginTop: '2rem', fontSize: '1.2rem' }}>
+        Cada clique aumenta o número para todo mundo no planeta em tempo real!
       </p>
-    </>
+    </div>
   )
 }
 
